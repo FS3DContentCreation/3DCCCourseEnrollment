@@ -204,7 +204,7 @@ jobs:
             /repos/$ORG/$NEW_REPO_NAME/collaborators/$STUDENT \
             -f permission='write'
             
-          gh issue comment $ISSUE_NUMBER --repo "$GITHUB_REPOSITORY" --body "@$STUDENT sending email to invite you as a collaborator on your new repo (**https://github.com/${ORG}/${NEW_REPO_NAME}**). Please **check your email** to accept the invitation."
+          gh issue comment $ISSUE_NUMBER --repo "$GITHUB_REPOSITORY" --body "@$STUDENT sending email to invite you as a collaborator on your new repo -  **https://github.com/${ORG}/${NEW_REPO_NAME}**  . Please **check your email** to accept the invitation."
 
 
       - name: Initialize Feedback Branch and PR
