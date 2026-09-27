@@ -1,10 +1,7 @@
-# PREFIX: pg2-2610-
-# TEMPLATE: PG2StudentRepo26.9
-# MONTHLY_CODE: 48e2f98394c10182dfcc9947897fba1b4ea6f074f0f6402aa31ac90546f6f63b
+# PREFIX: 3dcc-2610-
+# MONTHLY_CODE: ad6ef0ee6945bf78405312c97181b25466d08165ee1be4c104b960b27be37c4f
 # MAX_REPOS: 120
 
-
-# NOTE: if updating the template repo, then you must add it to the list of selected repos for the bot (don't forget to click the "Save" button)
-# https://github.com/organizations/FullSailGameStudies/settings/installations/143380104 
-
-# NOTE: if creating a new student repo, make sure to set it as a template repo.
+# NOTE: if updating template repos, add them to the bot installation for FS3DContentCreation:
+# https://github.com/organizations/FS3DContentCreation/settings/installations
+# NOTE: ensure each course repo is set as a template repository.
