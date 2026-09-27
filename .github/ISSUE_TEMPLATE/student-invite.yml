@@ -1,12 +1,12 @@
 name: Request Assignment Repository
 description: Instantly provision your private assignment repository using the shared monthly claim code.
 title: "Private Repository Request"
-labels: ["provision-repo2"]
+labels: ["provision-repo"]
 body:
   - type: markdown
     attributes:
       value: |
-        ### Welcome to the PG2 Course!
+        ### Welcome to the 3dcc Course!
         Clicking submit below will instantly check our class capacity limits and generate your personal, private workspace under our organization.
   - type: input
     id: passcode
