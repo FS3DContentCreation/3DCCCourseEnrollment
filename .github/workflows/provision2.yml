@@ -15,9 +15,11 @@ jobs:
 
     env:
       ORG_NAME: FS3DContentCreation
-      EXPECTED_HASH: ad6ef0ee6945bf78405312c97181b25466d08165ee1be4c104b960b27be37c4f
 
     steps:
+      - name: Checkout Enrollment Repository
+        uses: actions/checkout@v4
+
       - name: Generate GitHub App Token
         id: app_token
         uses: actions/create-github-app-token@v1
@@ -26,23 +28,38 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: ${{ env.ORG_NAME }}
 
-      - name: Parse Issue Body and Authenticate Student
+      - name: Parse Issue and Validate Passcode
         id: auth
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           STUDENT_GITHUB_LOGIN: ${{ github.event.issue.user.login }}
-          HASHDB: ${{ vars.HASHDB }}
         run: |
-          echo "Parsing issue form data..."
+          set -e
 
-          STUDENT_EMAIL=$(printf '%s\n' "$ISSUE_BODY" | grep -A 2 -i "Full Sail Email" | tail -n 1 | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-          PASSCODE=$(printf '%s\n' "$ISSUE_BODY" | grep -A 2 -i "Passcode" | tail -n 1 | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          if [ ! -f pg2Info.txt ]; then
+            echo "ERROR: pg2Info.txt was not found in the repository root."
+            exit 1
+          fi
 
-          if [ -z "$STUDENT_EMAIL" ] || [ -z "$PASSCODE" ]; then
-            echo "ERROR: Student email or passcode missing from issue body."
-            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "@${STUDENT_GITHUB_LOGIN} Error: Email or passcode was not provided. Please follow the issue template."
+          PREFIX=$(grep -m 1 -E '^[[:space:]]*#[[:space:]]*PREFIX:' pg2Info.txt | sed -E 's/^[[:space:]]*#[[:space:]]*PREFIX:[[:space:]]*//' | tr -d '\r' || true)
+          EXPECTED_HASH=$(grep -m 1 -E '^[[:space:]]*#[[:space:]]*MONTHLY_CODE:' pg2Info.txt | sed -E 's/^[[:space:]]*#[[:space:]]*MONTHLY_CODE:[[:space:]]*//' | tr -d '\r' || true)
+          MAX_REPOS=$(grep -m 1 -E '^[[:space:]]*#[[:space:]]*MAX_REPOS:' pg2Info.txt | sed -E 's/^[[:space:]]*#[[:space:]]*MAX_REPOS:[[:space:]]*//' | tr -d '\r' || true)
+
+          if [ -z "$PREFIX" ] || [ -z "$EXPECTED_HASH" ] || ! [[ "$MAX_REPOS" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: pg2Info.txt must define PREFIX, MONTHLY_CODE, and a numeric MAX_REPOS."
+            exit 1
+          fi
+
+          PASSCODE=$(printf '%s\n' "$ISSUE_BODY" | grep -A 2 -i "Claim Code" | tail -n 1 | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)
+          if [ -z "$PASSCODE" ]; then
+            PASSCODE=$(printf '%s\n' "$ISSUE_BODY" | grep -A 2 -i "Passcode" | tail -n 1 | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)
+          fi
+
+          if [ -z "$PASSCODE" ]; then
+            echo "ERROR: Claim code missing from issue."
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "@${STUDENT_GITHUB_LOGIN} Error: Claim code was not provided."
             gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason "not_planned"
             echo "AUTH_FAILED=true" >> "$GITHUB_ENV"
             exit 0
@@ -51,29 +68,22 @@ jobs:
           PASSCODE_HASH=$(printf '%s' "$PASSCODE" | sha256sum | awk '{print $1}')
           if [ "$PASSCODE_HASH" != "$EXPECTED_HASH" ]; then
             echo "ERROR: Invalid passcode."
-            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "@${STUDENT_GITHUB_LOGIN} Error: Invalid enrollment passcode provided."
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "@${STUDENT_GITHUB_LOGIN} Error: Invalid enrollment claim code."
             gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason "not_planned"
             echo "AUTH_FAILED=true" >> "$GITHUB_ENV"
             exit 0
           fi
 
-          NORMALIZED_EMAIL=$(printf '%s' "$STUDENT_EMAIL" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
-          STUDENT_HASH=$(printf '%s' "$NORMALIZED_EMAIL" | sha256sum | awk '{print $1}')
-          MATCH_LINE=$(printf '%s\n' "$HASHDB" | grep -m 1 -E "^${STUDENT_HASH}[[:space:]]" || true)
-
-          if [ -z "$MATCH_LINE" ]; then
-            echo "ERROR: Student email not found in authorized roster (HASHDB)."
-            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "@${STUDENT_GITHUB_LOGIN} Error: Your email (${STUDENT_EMAIL}) is not listed in the authorized student roster."
+          CURRENT_COUNT=$(gh repo list "$ORG_NAME" --limit 1000 --json name --jq '.[].name' | awk -v prefix="$PREFIX" 'index($0, prefix) == 1 { count++ } END { print count + 0 }')
+          if [ "$CURRENT_COUNT" -ge "$MAX_REPOS" ]; then
+            echo "ERROR: Maximum cohort repository limit reached."
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "@${STUDENT_GITHUB_LOGIN} Error: Course repository capacity reached. Please contact your instructor."
             gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason "not_planned"
             echo "AUTH_FAILED=true" >> "$GITHUB_ENV"
             exit 0
           fi
 
-          REPO_TAG=$(printf '%s\n' "$MATCH_LINE" | awk '{print $2}')
-          STUDENT_EMAIL_USERNAME=$(printf '%s' "$NORMALIZED_EMAIL" | awk -F '@' '{print $1}')
-
-          echo "STUDENT_EMAIL_USERNAME=${STUDENT_EMAIL_USERNAME}" >> "$GITHUB_ENV"
-          echo "REPO_TAG=${REPO_TAG}" >> "$GITHUB_ENV"
+          echo "PREFIX=${PREFIX}" >> "$GITHUB_ENV"
           echo "AUTH_FAILED=false" >> "$GITHUB_ENV"
 
       - name: Provision Course Repositories
@@ -81,9 +91,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           ORG: ${{ env.ORG_NAME }}
+          PREFIX: ${{ env.PREFIX }}
           STUDENT_GITHUB_LOGIN: ${{ github.event.issue.user.login }}
-          STUDENT_EMAIL_USERNAME: ${{ env.STUDENT_EMAIL_USERNAME }}
-          REPO_TAG: ${{ env.REPO_TAG }}
         run: |
           set -e
           SUMMARY=""
@@ -91,7 +100,7 @@ jobs:
           LABS="1 2 3 4 5 6 7"
           for N in $LABS; do
             TEMPLATE_REPO="3dcc-lab-${N}"
-            NEW_REPO_NAME="3dcc-lab-${N}-${REPO_TAG}-${STUDENT_EMAIL_USERNAME}"
+            NEW_REPO_NAME="${PREFIX}lab-${N}-${STUDENT_GITHUB_LOGIN}"
 
             if gh repo view "$ORG/$NEW_REPO_NAME" > /dev/null 2>&1; then
               echo "::warning::Repository $ORG/$NEW_REPO_NAME already exists. Skipping."
@@ -111,10 +120,9 @@ jobs:
             for i in $(seq 1 15); do
               BRANCH_CHECK=$(gh api "/repos/$ORG/$NEW_REPO_NAME/branches" --jq '.[].name' 2>/dev/null || true)
               if [ -n "$BRANCH_CHECK" ]; then
-                echo "Repository files and branches initialized successfully!"
                 break
               fi
-              echo "Template copy in progress... waiting 3 seconds (Attempt $i/15)"
+              echo "Template copy in progress... waiting 3 seconds (attempt $i/15)"
               sleep 3
             done
             sleep 5
@@ -126,7 +134,6 @@ jobs:
               "/repos/$ORG/$NEW_REPO_NAME/collaborators/$STUDENT_GITHUB_LOGIN" \
               -f permission=write
 
-            echo "Setting topics..."
             gh repo edit "$ORG/$NEW_REPO_NAME" --add-topic "ops-student"
             gh repo edit "$ORG/$NEW_REPO_NAME" --add-topic "not-graded"
 
@@ -135,7 +142,7 @@ jobs:
 
           EXTRA_TEMPLATES="renderdoc API_SAMPLES"
           for EXTRA in $EXTRA_TEMPLATES; do
-            EXTRA_NEW_NAME="${EXTRA}-${REPO_TAG}-${STUDENT_EMAIL_USERNAME}"
+            EXTRA_NEW_NAME="${PREFIX}${EXTRA}-${STUDENT_GITHUB_LOGIN}"
 
             if gh repo view "$ORG/$EXTRA_NEW_NAME" > /dev/null 2>&1; then
               echo "::warning::Repository $ORG/$EXTRA_NEW_NAME already exists. Skipping."
@@ -155,10 +162,9 @@ jobs:
             for i in $(seq 1 15); do
               BRANCH_CHECK=$(gh api "/repos/$ORG/$EXTRA_NEW_NAME/branches" --jq '.[].name' 2>/dev/null || true)
               if [ -n "$BRANCH_CHECK" ]; then
-                echo "Repository branches initialized successfully!"
                 break
               fi
-              echo "Template copy in progress... waiting 3 seconds (Attempt $i/15)"
+              echo "Template copy in progress... waiting 3 seconds (attempt $i/15)"
               sleep 3
             done
             sleep 5
@@ -190,12 +196,11 @@ jobs:
         run: |
           gh issue comment "$ISSUE_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
-            --body "@${STUDENT_GITHUB_LOGIN}, your private lab repositories have been configured:
+            --body "@${STUDENT_GITHUB_LOGIN}, your private course repositories have been created:
 
           ${PROVISION_SUMMARY}
 
-          **IMPORTANT**: Save this list for your records.
-          **ACTION REQUIRED**: You will receive a separate repository invitation for each lab repository above. You must accept each invitation within **7 days**, or it will expire. Accept them now and clone the repositories to verify that they work."
+          **ACTION REQUIRED**: You will receive an invitation for each repository. Accept each invitation within **7 days** to gain access."
 
           gh issue close "$ISSUE_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
