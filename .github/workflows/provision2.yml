@@ -134,8 +134,6 @@ jobs:
               "/repos/$ORG/$NEW_REPO_NAME/collaborators/$STUDENT_GITHUB_LOGIN" \
               -f permission=write
 
-            gh repo edit "$ORG/$NEW_REPO_NAME" --add-topic "ops-student"
-            gh repo edit "$ORG/$NEW_REPO_NAME" --add-topic "not-graded"
 
             SUMMARY="${SUMMARY}- https://github.com/${ORG}/${NEW_REPO_NAME}\n"
           done
@@ -174,9 +172,6 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               "/repos/$ORG/$EXTRA_NEW_NAME/collaborators/$STUDENT_GITHUB_LOGIN" \
               -f permission=write
-
-            gh repo edit "$ORG/$EXTRA_NEW_NAME" --add-topic "ops-student"
-            gh repo edit "$ORG/$EXTRA_NEW_NAME" --add-topic "not-graded"
 
             SUMMARY="${SUMMARY}- https://github.com/${ORG}/${EXTRA_NEW_NAME}\n"
           done
