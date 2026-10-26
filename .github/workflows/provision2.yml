@@ -60,7 +60,7 @@ jobs:
           if [ -z "$PASSCODE" ]; then
             echo "ERROR: Claim code missing from issue."
             gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "@${STUDENT_GITHUB_LOGIN} Error: Claim code was not provided."
-            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason "not_planned"
+            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason "not planned"
             echo "AUTH_FAILED=true" >> "$GITHUB_ENV"
             exit 0
           fi
@@ -69,7 +69,7 @@ jobs:
           if [ "$PASSCODE_HASH" != "$EXPECTED_HASH" ]; then
             echo "ERROR: Invalid passcode."
             gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "@${STUDENT_GITHUB_LOGIN} Error: Invalid enrollment claim code."
-            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason "not_planned"
+            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason "not planned"
             echo "AUTH_FAILED=true" >> "$GITHUB_ENV"
             exit 0
           fi
@@ -78,7 +78,7 @@ jobs:
           if [ "$CURRENT_COUNT" -ge "$MAX_REPOS" ]; then
             echo "ERROR: Maximum cohort repository limit reached."
             gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "@${STUDENT_GITHUB_LOGIN} Error: Course repository capacity reached. Please contact your instructor."
-            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason "not_planned"
+            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason "not planned"
             echo "AUTH_FAILED=true" >> "$GITHUB_ENV"
             exit 0
           fi
